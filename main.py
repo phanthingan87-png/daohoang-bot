@@ -1,4 +1,4 @@
-# main.py — FULL: giữ nguyên lệnh cũ + thêm 2 thuốc + spam + admin tier + channel lock + keep-alive
+# main.py — V7: giữ lệnh cũ + farm 1 lần + bonus hiển thị + daily giảm + cướp vàng + kienbao + buffs + admin tier
 import os, random, asyncio, time
 import discord
 from discord.ext import commands
@@ -11,7 +11,7 @@ import daohoang as db
 app = Flask(__name__)
 @app.route("/")
 def home():
-    return "✅ DaoHoang V6 running"
+    return "✅ DaoHoang V7 running"
 
 def _run_web():
     app.run(host="0.0.0.0", port=8080)
@@ -101,12 +101,12 @@ async def kdaily(ctx):
     db.ensure_user(ctx.author.id, ctx.author.name)
     if not db.can_daily(ctx.author.id):
         return await ctx.reply("🕒 Hôm nay bạn nhận **daily** rồi!")
-    reward = random.randint(1000, 3000)
+    reward = random.randint(200, 800)  # giảm thưởng daily
     got = _gain(ctx.author.id, reward)
     db.set_daily_today(ctx.author.id)
     db.add_exp(ctx.author.id, 10)
     await owo(ctx)
-    await ctx.reply(f"🎉 Daily: +{got} vàng {random.choice(EMOJIS)}")
+    await ctx.reply(f"🎁 Daily: **+{got}** vàng")
 
 @bot.command(name="farm")
 async def kfarm(ctx):
@@ -114,7 +114,7 @@ async def kfarm(ctx):
     uid = ctx.author.id
     db.ensure_user(uid, ctx.author.name)
 
-    # Cooldown 10s (trừ khi spam ON hoặc SuperAdmin)
+    # Cooldown 10s (bị bỏ qua nếu spam ON hoặc SuperAdmin)
     if not db.get_can_spam(uid) and not _is_super_admin(ctx.author):
         last = db.get_last_farm_ts(uid)
         now = int(time.time())
@@ -133,21 +133,17 @@ async def kfarm(ctx):
             db.add_gold(uid, -lose); db.add_exp(uid, 2)
             return await ctx.reply(f"💀 Xui quá! Bạn gặp nạn và mất {lose} vàng.")
 
-    # 5-10 + bonus cuốc
+    # 5-10 + bonus cuốc (hiển thị bonus rõ)
     base = random.randint(5, 10)
-    bonus = 0
     inv = dict(db.get_inv(uid))
-    bonus += inv.get("cuocgo", 0) * 1
-    bonus += inv.get("cuocsat", 0) * 2
-    bonus += inv.get("cuocvang", 0) * 5
-    bonus += inv.get("cuockimcuong", 0) * 10
+    bonus = inv.get("cuocgo", 0)*1 + inv.get("cuocsat", 0)*2 + inv.get("cuocvang", 0)*5 + inv.get("cuockimcuong", 0)*10
     total = base + bonus
     got = _gain(uid, total)
     db.add_exp(uid, 5)
     await owo(ctx)
-    await ctx.reply(f"⛏️ Bạn đào được **+{got}** vàng! {random.choice(EMOJIS)}")
+    await ctx.reply(f"⛏️ Bạn đào được **+{got}** vàng (bonus +{bonus}).")
 
-# ---- Casino ----
+# ---- Casino (vẫn hoạt động, không đưa vào help) ----
 @bot.command(name="cf")
 async def kcf(ctx, bet: str):
     if not await _gate(ctx): return
@@ -252,6 +248,64 @@ async def khunt(ctx):
     got = _gain(uid, random.randint(200, 800)); db.add_exp(uid, 5)
     await ctx.reply(f"🧭 Bạn tìm được **+{got}** vàng khi khám phá!")
 
+# ---- Rob (NEW) ----
+ROB_COST = 10000
+ROB_CD = 600  # 10 phút
+ROB_SUCCESS = 70  # %
+
+@bot.command(name="cuop")
+async def kcuop(ctx, target: discord.Member):
+    if not await _gate(ctx): return
+    robber = ctx.author
+    victim = target
+    if victim.bot: return await ctx.reply("🤖 Không thể cướp bot.")
+    if robber.id == victim.id: return await ctx.reply("❌ Không thể tự cướp chính mình.")
+    db.ensure_user(robber.id, robber.name)
+    db.ensure_user(victim.id, victim.name)
+
+    # Kiểm tra tiền cướp
+    if db.get_gold(robber.id) < ROB_COST:
+        return await ctx.reply(f"❌ Bạn cần ít nhất {ROB_COST} vàng để cướp.")
+    # Cooldown
+    now = int(time.time())
+    last = db.get_last_rob_ts(robber.id)
+    if now - last < ROB_CD:
+        return await ctx.reply(f"⏳ Bạn phải đợi {ROB_CD - (now - last)}s nữa mới được cướp lần tiếp theo.")
+    db.set_last_rob_now(robber.id)
+
+    # Tính tỉ lệ thành công (kienbao nạn nhân giảm 50% 1 lần)
+    success_rate = ROB_SUCCESS
+    kienbao_used = False
+    inv_victim = dict(db.get_inv(victim.id))
+    if inv_victim.get("kienbao", 0) > 0:
+        # tiêu hao ngay khi bị nhắm tới
+        if db.use_item(victim.id, "kienbao", 1):
+            success_rate = max(0, success_rate // 2)  # 70% -> 35%
+            kienbao_used = True
+
+    # Trừ phí cướp trước
+    db.add_gold(robber.id, -ROB_COST)
+
+    await owo(ctx, 0.8, 1.6)
+    roll = random.randint(1, 100)
+    if roll <= success_rate:
+        # Thành công: cướp 20-40% vàng hiện có của nạn nhân
+        vic_gold = db.get_gold(victim.id)
+        if vic_gold <= 0:
+            return await ctx.reply(f"🕳️ {victim.mention} không có vàng để cướp. Bạn mất phí {ROB_COST} vàng.")
+        percent = random.randint(20, 40)
+        steal = max(1, (vic_gold * percent) // 100)
+        db.add_gold(victim.id, -steal)
+        db.add_gold(robber.id, steal)
+        db.add_exp(robber.id, 10)
+        note = " (nạn nhân đã dùng *kienbao*, tỉ lệ cướp bị giảm 50%)" if kienbao_used else ""
+        await ctx.reply(f"⚔️ CƯỚP THÀNH CÔNG! Bạn lấy **{steal}** vàng từ {victim.mention}.{note}")
+    else:
+        # Thất bại: mất 10,000 (đã trừ trước)
+        db.add_exp(robber.id, 2)
+        note = " (nạn nhân đã dùng *kienbao*, tỉ lệ cướp bị giảm 50%)" if kienbao_used else ""
+        await ctx.reply(f"💢 CƯỚP THẤT BẠI! Bạn mất phí **{ROB_COST}** vàng.{note}")
+
 # ---- Trade / Info ----
 @bot.command(name="give")
 async def kgive(ctx, member: discord.Member, amount: str):
@@ -325,18 +379,17 @@ async def ktop(ctx):
         out.append(f"{pre} **{name}** — {gold}")
     await ctx.reply("\n".join(out))
 
-# ---- Help ----
+# ---- Help (Ẩn cờ bạc) ----
 @bot.command(name="help")
 async def khelp(ctx):
     if not await _gate(ctx): return
     msg = (
         "**📖 Lệnh người chơi**\n"
         "`kstart`, `kprofile`, `kdaily`\n"
-        "`kfarm` — đào (CD 10s, có thể bật spam bằng admin)\n"
+        "`kfarm` — đào (CD 10s)\n"
         "`kshop`, `kbuy <item> <số>`, `kdung <thuoc_x2|thuoc_giamchet>`, `kinv`\n"
         "`kgive @user <số>`, `ktop`\n"
-        "`kcf <cược>`, `ks`, `kbj`, `ktx <cược> t|x`\n\n"
-        "Nhập **số KHÔNG dấu** (vd: 125236314631461)."
+        "`kcuop @user` — tốn 10000 vàng, 70% thành công, CD 10 phút\n"
     )
     await ctx.reply(msg)
 
