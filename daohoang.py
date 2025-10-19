@@ -6,15 +6,15 @@ DB_PATH = "database.db"
 
 # ---- SHOP ----
 SHOP_ITEMS: Dict[str, Tuple[int, str]] = {
-    "cuocgo":       (10,  "Cuốc gỗ (+1 coin/farm, cộng dồn)"),
-    "cuocsat":      (20,  "Cuốc sắt (+2 coin/farm, cộng dồn)"),
-    "cuocvang":     (50,  "Cuốc vàng (+5 coin/farm, cộng dồn)"),
-    "cuockimcuong": (100, "Cuốc kim cương (+10 coin/farm, cộng dồn)"),
-    "khien":        (200, "Khiên chặn chết 100% 1 lần (tiêu hao)"),
-    "khien_vip":    (500, "Khiên VIP chặn chết 100% 5 lần (tiêu hao)"),
+    "cuocgo":       (20,  "Cuốc gỗ (+1 coin/farm, cộng dồn)"),
+    "cuocsat":      (50,  "Cuốc sắt (+2 coin/farm, cộng dồn)"),
+    "cuocvang":     (100,  "Cuốc vàng (+5 coin/farm, cộng dồn)"),
+    "cuockimcuong": (200, "Cuốc kim cương (+10 coin/farm, cộng dồn)"),
+    "khien":        (100, "Khiên chặn chết 100% 1 lần (tiêu hao)"),
+    "khien_vip":    (250, "Khiên VIP chặn chết 100% 5 lần (tiêu hao)"),
     # Thuốc mới (2 phút)
-    "thuoc_x2":       (500,  "X2 vàng nhận trong 2 phút"),
-    "thuoc_giamchet": (1000, "Giảm 50% tỉ lệ chết trong 2 phút"),
+    "thuoc_x2":       (1000,  "X2 vàng nhận trong 2 phút"),
+    "thuoc_giamchet": (1500, "Giảm 50% tỉ lệ chết trong 2 phút"),
 }
 
 BUFF_DUR_SEC = 120  # 2 phút
@@ -282,3 +282,4 @@ def parse_amount(text: str) -> Optional[int]:
     if not s.isdigit(): return None
     v = int(s)
     return v if v > 0 else None
+
