@@ -1,19 +1,20 @@
-# daohoang.py — SQLite + dữ liệu + shop + buff + config
+# daohoang.py — SQLite + data + shop + buffs + server config
 import sqlite3, time, datetime
 from typing import Optional, List, Tuple, Dict
 
 DB_PATH = "database.db"
 
+# ---- SHOP ----
 SHOP_ITEMS: Dict[str, Tuple[int, str]] = {
-    # item: (price, description)
     "cuocgo":       (10,  "Cuốc gỗ (+1 coin/farm, cộng dồn)"),
     "cuocsat":      (20,  "Cuốc sắt (+2 coin/farm, cộng dồn)"),
     "cuocvang":     (50,  "Cuốc vàng (+5 coin/farm, cộng dồn)"),
     "cuockimcuong": (100, "Cuốc kim cương (+10 coin/farm, cộng dồn)"),
     "khien":        (200, "Khiên chặn chết 100% 1 lần (tiêu hao)"),
     "khien_vip":    (500, "Khiên VIP chặn chết 100% 5 lần (tiêu hao)"),
-    "thuoc_x2":     (500, "Thuốc x2 coin trong 2 phút"),
-    "thuoc_giamchet": (1000, "Thuốc giảm 50% tỉ lệ chết trong 2 phút"),
+    # Thuốc mới (2 phút)
+    "thuoc_x2":       (500,  "X2 vàng nhận trong 2 phút"),
+    "thuoc_giamchet": (1000, "Giảm 50% tỉ lệ chết trong 2 phút"),
 }
 
 BUFF_DUR_SEC = 120  # 2 phút
@@ -26,22 +27,20 @@ def _conn():
 def setup_database():
     conn = _conn()
     cur = conn.cursor()
-    # users
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
-        user_id     INTEGER PRIMARY KEY,
-        username    TEXT,
-        gold        INTEGER DEFAULT 0,
-        level       INTEGER DEFAULT 1,
-        exp         INTEGER DEFAULT 0,
-        last_daily  TEXT,
-        banned      INTEGER DEFAULT 0,
-        is_admin    INTEGER DEFAULT 0,
-        can_spam    INTEGER DEFAULT 0,
-        last_farm_ts INTEGER DEFAULT 0
+        user_id       INTEGER PRIMARY KEY,
+        username      TEXT,
+        gold          INTEGER DEFAULT 0,
+        level         INTEGER DEFAULT 1,
+        exp           INTEGER DEFAULT 0,
+        last_daily    TEXT,
+        banned        INTEGER DEFAULT 0,
+        is_admin      INTEGER DEFAULT 0,
+        can_spam      INTEGER DEFAULT 0,
+        last_farm_ts  INTEGER DEFAULT 0
     )
     """)
-    # inventory
     cur.execute("""
     CREATE TABLE IF NOT EXISTS inventory (
         user_id INTEGER,
@@ -51,29 +50,26 @@ def setup_database():
         FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
     )
     """)
-    # buffs (expires_at = epoch seconds)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS buffs (
-        user_id   INTEGER,
-        buff_name TEXT,
+        user_id    INTEGER,
+        buff_name  TEXT,
         expires_at INTEGER,
         PRIMARY KEY (user_id, buff_name),
         FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
     )
     """)
-    # config (single row)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS config (
-        id                 INTEGER PRIMARY KEY CHECK (id = 1),
-        allowed_channel_id INTEGER,
-        death_rate_percent INTEGER DEFAULT 35
+        id                   INTEGER PRIMARY KEY CHECK (id = 1),
+        allowed_channel_id   INTEGER,
+        death_rate_percent   INTEGER DEFAULT 35
     )
     """)
     cur.execute("INSERT OR IGNORE INTO config (id, allowed_channel_id, death_rate_percent) VALUES (1, NULL, 35)")
-    conn.commit()
-    conn.close()
+    conn.commit(); conn.close()
 
-# ---- users ----
+# ---- USERS ----
 def ensure_user(uid: int, username: str):
     conn = _conn(); cur = conn.cursor()
     cur.execute("INSERT OR IGNORE INTO users (user_id, username) VALUES (?, ?)", (uid, username))
@@ -173,7 +169,7 @@ def set_last_farm_now(uid: int):
     cur.execute("UPDATE users SET last_farm_ts=? WHERE user_id=?", (int(time.time()), uid))
     conn.commit(); conn.close()
 
-# ---- inventory ----
+# ---- INVENTORY ----
 def get_inv(uid: int) -> List[Tuple[str, int]]:
     conn = _conn(); cur = conn.cursor()
     cur.execute("SELECT item, qty FROM inventory WHERE user_id=? ORDER BY item", (uid,))
@@ -200,7 +196,7 @@ def use_item(uid: int, item: str, qty: int = 1) -> bool:
     cur.execute("DELETE FROM inventory WHERE user_id=? AND item=? AND qty<=0", (uid, item))
     conn.commit(); conn.close(); return True
 
-# ---- shop ----
+# ---- SHOP OPS ----
 def list_shop() -> List[Tuple[str, int, str]]:
     return [(name, SHOP_ITEMS[name][0], SHOP_ITEMS[name][1]) for name in SHOP_ITEMS.keys()]
 
@@ -212,15 +208,11 @@ def buy(uid: int, item: str, qty: int) -> Optional[str]:
     if have < price:
         return f"❌ Không đủ vàng. Cần {price}, bạn có {have}."
     add_gold(uid, -price)
-    # khiên_vip = 5 lần => lưu như item (mỗi 1 qty = 5 lần)
     add_item(uid, item, qty)
     return f"🛒 Đã mua {qty} **{item}** với giá {price} vàng."
 
-# ---- buffs ----
+# ---- BUFFS ----
 def activate_buff(uid: int, buff_name: str, now_ts: Optional[int] = None) -> int:
-    """
-    Kích hoạt hoặc gia hạn buff. Trả về expires_at.
-    """
     if now_ts is None: now_ts = int(time.time())
     expires = now_ts + BUFF_DUR_SEC
     conn = _conn(); cur = conn.cursor()
@@ -234,9 +226,6 @@ def activate_buff(uid: int, buff_name: str, now_ts: Optional[int] = None) -> int
     return expires
 
 def get_active_buffs(uid: int) -> Dict[str, int]:
-    """
-    Trả về dict {buff_name: seconds_left} chỉ các buff còn hiệu lực.
-    """
     now_ts = int(time.time())
     conn = _conn(); cur = conn.cursor()
     cur.execute("SELECT buff_name, expires_at FROM buffs WHERE user_id=?", (uid,))
@@ -254,7 +243,7 @@ def clear_expired_buffs(uid: int):
     cur.execute("DELETE FROM buffs WHERE user_id=? AND expires_at<=?", (uid, now_ts))
     conn.commit(); conn.close()
 
-# ---- config ----
+# ---- CONFIG ----
 def get_allowed_channel_id() -> Optional[int]:
     conn = _conn(); cur = conn.cursor()
     cur.execute("SELECT allowed_channel_id FROM config WHERE id=1")
@@ -278,18 +267,16 @@ def set_death_rate(p: int):
     cur.execute("UPDATE config SET death_rate_percent=? WHERE id=1", (p,))
     conn.commit(); conn.close()
 
-# ---- leaderboard ----
+# ---- LEADERBOARD ----
 def top_rich(limit: int = 10) -> List[Tuple[str, int]]:
     conn = _conn(); cur = conn.cursor()
     cur.execute("SELECT username, gold FROM users ORDER BY gold DESC LIMIT ?", (limit,))
     rows = cur.fetchall(); conn.close()
     return rows
 
-# ---- parse ----
+# ---- PARSE ----
 def parse_amount(text: str) -> Optional[int]:
-    """
-    Nhận chuỗi số thuần (không dấu . ,).
-    """
+    # chỉ nhận chuỗi số KHÔNG dấu . hoặc ,  (vd: "125236314631461")
     if not isinstance(text, str): return None
     s = text.strip()
     if not s.isdigit(): return None
