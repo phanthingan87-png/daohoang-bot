@@ -1,4 +1,4 @@
-# daohoang.py — SQLite + data + shop + buffs + server config
+# daohoang.py — SQLite + data + shop + buffs + server config (V7)
 import sqlite3, time, datetime
 from typing import Optional, List, Tuple, Dict
 
@@ -6,15 +6,17 @@ DB_PATH = "database.db"
 
 # ---- SHOP ----
 SHOP_ITEMS: Dict[str, Tuple[int, str]] = {
-    "cuocgo":       (20,  "Cuốc gỗ (+1 coin/farm, cộng dồn)"),
-    "cuocsat":      (50,  "Cuốc sắt (+2 coin/farm, cộng dồn)"),
-    "cuocvang":     (100,  "Cuốc vàng (+5 coin/farm, cộng dồn)"),
-    "cuockimcuong": (200, "Cuốc kim cương (+10 coin/farm, cộng dồn)"),
-    "khien":        (100, "Khiên chặn chết 100% 1 lần (tiêu hao)"),
-    "khien_vip":    (250, "Khiên VIP chặn chết 100% 5 lần (tiêu hao)"),
-    # Thuốc mới (2 phút)
-    "thuoc_x2":       (1000,  "X2 vàng nhận trong 2 phút"),
-    "thuoc_giamchet": (1500, "Giảm 50% tỉ lệ chết trong 2 phút"),
+    "cuocgo":       (10,   "Cuốc gỗ (+1 coin/farm, cộng dồn)"),
+    "cuocsat":      (20,   "Cuốc sắt (+2 coin/farm, cộng dồn)"),
+    "cuocvang":     (50,   "Cuốc vàng (+5 coin/farm, cộng dồn)"),
+    "cuockimcuong": (100,  "Cuốc kim cương (+10 coin/farm, cộng dồn)"),
+    "khien":        (200,  "Khiên chặn chết 100% 1 lần (tiêu hao)"),
+    "khien_vip":    (500,  "Khiên VIP chặn chết 100% 5 lần (tiêu hao)"),
+    # Thuốc (2 phút)
+    "thuoc_x2":       (500,  "X2 vàng nhận trong 2 phút"),
+    "thuoc_giamchet": (1000, "Giảm 50% tỉ lệ chết trong 2 phút"),
+    # Chống cướp
+    "kienbao":        (2000, "Giảm 50% tỉ lệ bị cướp trong 1 lần (tự kích hoạt khi bị cướp)"),
 }
 
 BUFF_DUR_SEC = 120  # 2 phút
@@ -38,7 +40,8 @@ def setup_database():
         banned        INTEGER DEFAULT 0,
         is_admin      INTEGER DEFAULT 0,
         can_spam      INTEGER DEFAULT 0,
-        last_farm_ts  INTEGER DEFAULT 0
+        last_farm_ts  INTEGER DEFAULT 0,
+        last_rob_ts   INTEGER DEFAULT 0
     )
     """)
     cur.execute("""
@@ -100,7 +103,11 @@ def set_ban(uid: int, on: bool):
 
 def reset_user(uid: int):
     conn = _conn(); cur = conn.cursor()
-    cur.execute("UPDATE users SET gold=0, level=1, exp=0, last_daily=NULL, banned=0, can_spam=0, last_farm_ts=0 WHERE user_id=?", (uid,))
+    cur.execute("""
+        UPDATE users SET gold=0, level=1, exp=0, last_daily=NULL, banned=0, can_spam=0,
+                        last_farm_ts=0, last_rob_ts=0
+        WHERE user_id=?
+    """, (uid,))
     cur.execute("DELETE FROM inventory WHERE user_id=?", (uid,))
     cur.execute("DELETE FROM buffs WHERE user_id=?", (uid,))
     conn.commit(); conn.close()
@@ -167,6 +174,17 @@ def get_last_farm_ts(uid: int) -> int:
 def set_last_farm_now(uid: int):
     conn = _conn(); cur = conn.cursor()
     cur.execute("UPDATE users SET last_farm_ts=? WHERE user_id=?", (int(time.time()), uid))
+    conn.commit(); conn.close()
+
+def get_last_rob_ts(uid: int) -> int:
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("SELECT last_rob_ts FROM users WHERE user_id=?", (uid,))
+    row = cur.fetchone(); conn.close()
+    return int(row[0]) if row else 0
+
+def set_last_rob_now(uid: int):
+    conn = _conn(); cur = conn.cursor()
+    cur.execute("UPDATE users SET last_rob_ts=? WHERE user_id=?", (int(time.time()), uid))
     conn.commit(); conn.close()
 
 # ---- INVENTORY ----
@@ -276,10 +294,9 @@ def top_rich(limit: int = 10) -> List[Tuple[str, int]]:
 
 # ---- PARSE ----
 def parse_amount(text: str) -> Optional[int]:
-    # chỉ nhận chuỗi số KHÔNG dấu . hoặc ,  (vd: "125236314631461")
+    # chỉ nhận chuỗi số KHÔNG dấu . hoặc ,
     if not isinstance(text, str): return None
     s = text.strip()
     if not s.isdigit(): return None
     v = int(s)
     return v if v > 0 else None
-
