@@ -20,7 +20,7 @@ Thread(target=_run_web, daemon=True).start()
 
 # ========= Discord =========
 TOKEN = os.getenv("DISCORD_TOKEN")
-SUPER_ADMIN_NAME = "sr.nguoihanhtinh_vnvodich"
+SUPER_ADMIN_NAME = "nguoihanhtinh_vnvodich"
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -503,3 +503,4 @@ if __name__ == "__main__":
     if not TOKEN:
         raise SystemExit("❌ Thiếu DISCORD_TOKEN env.")
     bot.run(TOKEN)
+
